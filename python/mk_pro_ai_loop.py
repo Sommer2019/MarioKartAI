@@ -1,11 +1,17 @@
-import socket, numpy as np, time
+import socket, numpy as np, time, os
 from agent import PPOAgent
 from strategy import high_level_strategy
 from stats_plot import plot_stats
 
-udp_recv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udp_recv.bind(("127.0.0.1",12345)); udp_recv.settimeout(0.001)
-udp_send = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+# File-based communication for compatibility with Dolphin Lua
+SEND_FILE = "python_to_lua.txt"
+RECV_FILE = "lua_to_python.txt"
+
+# Initialize communication files
+with open(SEND_FILE, "w") as f:
+    f.write("")
+with open(RECV_FILE, "w") as f:
+    f.write("")
 
 agent = PPOAgent()
 prev_state = np.zeros(26)
@@ -34,22 +40,48 @@ def get_reward(state, prev_state, offroad_counter):
     else: offroad_counter=0
     return reward, offroad_counter
 
+def read_from_lua():
+    """Read data from Lua script via file"""
+    try:
+        if os.path.exists(RECV_FILE):
+            with open(RECV_FILE, "r") as f:
+                data = f.read().strip()
+            if data:
+                # Clear file after reading
+                with open(RECV_FILE, "w") as f:
+                    f.write("")
+                return data
+    except (IOError, OSError):
+        pass
+    return None
+
+def send_to_lua(data):
+    """Send data to Lua script via file"""
+    try:
+        with open(SEND_FILE, "w") as f:
+            f.write(data)
+        return True
+    except (IOError, OSError):
+        return False
+
 while True:
     frame_count+=1
     try:
-        data,_=udp_recv.recvfrom(1024)
-        state=np.array([float(x) for x in data.decode().split(",")])
-        use_item_flag, drift_flag, wheelie_flag = high_level_strategy(state)
-        action = agent.select_action(state)
-        action[3]=use_item_flag; action[4]=drift_flag; action[5]=wheelie_flag
-        reward, offroad_counter = get_reward(state, prev_state, offroad_counter)
-        agent.store_transition(state, action, reward)
-        agent.train_if_ready()
-        prev_state=state.copy()
-        log_data["frame"].append(frame_count); log_data["speed"].append(state[4]); log_data["drift"].append(drift_flag)
-        log_data["wheelie"].append(wheelie_flag); log_data["offroad"].append(int(state[1]<-1))
-        log_data["reward"].append(reward); log_data["items_used"].append(use_item_flag)
-        action_str=",".join([str(a) for a in action])
-        udp_send.sendto(action_str.encode(),("127.0.0.1",12346))
-    except socket.timeout: pass
+        data_str = read_from_lua()
+        if data_str:
+            state=np.array([float(x) for x in data_str.split(",")])
+            use_item_flag, drift_flag, wheelie_flag = high_level_strategy(state)
+            action = agent.select_action(state)
+            action[3]=use_item_flag; action[4]=drift_flag; action[5]=wheelie_flag
+            reward, offroad_counter = get_reward(state, prev_state, offroad_counter)
+            agent.store_transition(state, action, reward)
+            agent.train_if_ready()
+            prev_state=state.copy()
+            log_data["frame"].append(frame_count); log_data["speed"].append(state[4]); log_data["drift"].append(drift_flag)
+            log_data["wheelie"].append(wheelie_flag); log_data["offroad"].append(int(state[1]<-1))
+            log_data["reward"].append(reward); log_data["items_used"].append(use_item_flag)
+            action_str=",".join([str(a) for a in action])
+            send_to_lua(action_str)
+    except (ValueError, IndexError):
+        pass
     time.sleep(0.01)
