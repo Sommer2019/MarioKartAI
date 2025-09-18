@@ -1,5 +1,7 @@
 # Startanleitung für Mario Kart Wii Profi AI
 
+**Note:** If you encounter a "socket module not found" error when loading the Lua script, this repository includes a fix. See `SOCKET_FIX.md` for details.
+
 ## 1. Dolphin vorbereiten
 1. Starte Dolphin Emulator und lade Mario Kart Wii.
 2. Wähle den gewünschten Track.
