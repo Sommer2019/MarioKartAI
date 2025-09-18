@@ -1,0 +1,1 @@
+-- Lua-Skript für Dolphin Emulator, unverändert vom Repo
